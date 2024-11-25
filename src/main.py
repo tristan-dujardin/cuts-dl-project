@@ -3,14 +3,14 @@
 from model.model import CUTSModel, train, test
 
 if __name__ == '__main__':
-    params = {'learning_rate': 0.03}
-    model = CUTSModel()
-
-
-
+    params = {'learning_rate': 0.03,
+              'epochs': 100}
+    
     train_loader = None
     val_loader = None
     test_loader = None
+
+    model = CUTSModel()
 
     model = train(model, train_loader, val_loader, params, verbose=True)
 
