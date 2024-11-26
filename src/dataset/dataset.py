@@ -3,11 +3,10 @@ import zipfile
 from urllib import request
 
 url = "https://github.com/KrishnaswamyLab/CUTS/raw/main/data/retina.zip"
-data_path = "data/retina/"
+data_path = "data/"
 zip_path = "data/retina.zip"
 
-os.makedirs(os.path.dirname(data_path), exist_ok=True)
-
+os.makedirs(os.path.dirname(zip_path), exist_ok=True)
 
 request.urlretrieve(url, zip_path)
 

@@ -37,10 +37,10 @@ def train(model, train_loader, val_loader, params, verbose=False):
     def __acc(pred_y, y): return ((pred_y == y).sum() / len(y)).item()
 
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=params['learning_rate'])
+    optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
 
     model.train()
-    for epoch in tqdm(range(params['epochs'])):
+    for epoch in tqdm(range(params.epochs)):
         for data in train_loader:
             """J'ai pas regarde le dataset mais la c'est un placeholder de donnees labellisees
             mtn il fait aller regarder le train de leur implementation et faire un truc similaire"""

@@ -8,10 +8,9 @@ from torch.utils.data import Dataset
 
 class Retina(Dataset):
 
-    def __init__(self,
-                 base_path: str = '../../data/retina',
-                 image_folder: str = 'image_with_GA',
-                 label_folder: str = 'label_with_GA'):
+    def __init__(self, base_path='data/retina'):
+        image_folder = 'image_with_GA'
+        label_folder = 'label_with_GA'
 
         self.img_path = glob('%s/%s/*' % (base_path, image_folder))
         self.label_path = glob('%s/%s/*' % (base_path, label_folder))
@@ -51,19 +50,19 @@ class Retina(Dataset):
         self.data_image = np.moveaxis(self.data_image, -1, 1)
         self.data_label = np.moveaxis(self.data_label, -1, 1)
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.img_path)
 
-    def __getitem__(self, idx) -> Tuple[np.array, np.array]:
+    def __getitem__(self, idx):
         image = self.data_image[idx]
         label = self.data_label[idx]
         return image, label
 
-    def all_images(self) -> np.array:
+    def all_images(self):
         return self.data_image
 
-    def num_image_channel(self) -> int:
+    def num_image_channel(self):
         return self.data_image.shape[1]
 
-    def num_classes(self) -> int:
+    def num_classes(self):
         return len(np.unique(self.data_label)) - 1

@@ -1,14 +1,19 @@
-
-
+import argparse
+from dataset.dataset_utils import split_data
+from dataset.retina import Retina
 from model.model import CUTSModel, train, test
 
 if __name__ == '__main__':
-    params = {'learning_rate': 0.03,
-              'epochs': 100}
+    parser = argparse.ArgumentParser(description='Parser for Model Settings.')
+    parser.add_argument('--mode', type=str, default='test', help='`train` or `test` the model')
+    parser.add_argument('--lr', type=float, default=0.03, help='Learning Rate float, unused if --mode is `test`')
+    parser.add_argument('--epochs', type=int, default=100, help='Epochs int, unused if --mode is `test`')
+
+    params = parser.parse_args()
+
+    data = Retina('data/retina')
     
-    train_loader = None
-    val_loader = None
-    test_loader = None
+    train_loader, val_loader, test_loader = split_data(data, (0.7, 0.15, 0.15), 8)
 
     model = CUTSModel()
 
