@@ -2,10 +2,11 @@ import torch
 from torch.utils.data import DataLoader, Dataset, random_split
 
 
-def split_data(data, splits, batch_size, random_seed=42):
+def split_data(data, splits, batch_size, max_size=-1, random_seed=42):
     assert sum(splits) == 1
 
-    n = len(data)
+    n = len(data) if max_size == -1 else min(len(data), max_size)
+    
     val_size = int(splits[1] * n)
     test_size = int(splits[2] * n)
     train_size = n - val_size - test_size
