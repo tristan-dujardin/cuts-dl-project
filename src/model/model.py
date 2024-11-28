@@ -1,30 +1,38 @@
 import os
+import random
 import torch
 import torch.nn.functional as func
+import numpy as np
 
+from skimage.metrics import structural_similarity
 from .output_saver import OutputSaver
 from tqdm import tqdm
 
 class CUTSModel(torch.nn.Module):
 
-    def __init__(self, input_size, kernels, patch_size):
+    def __init__(self, input_channels, kernels=16, patch_size=5, sampled_patches_per_image=4):
         super(CUTSModel, self).__init__()
 
+        self.latent_dim = kernels * 8
         self.patch_size = patch_size
-        self.recon = Patch(input_size, patch_size, kernels * 8)
+        self.recon = Patch(input_channels, patch_size, self.latent_dim)
+        self.patch_sampler = PatchSampler(
+            random_seed=42,
+            patch_size=self.patch_size,
+            sampled_patches_per_image=sampled_patches_per_image)
+
 
         self.batch_norm1 = torch.nn.BatchNorm2d(kernels)
         self.batch_norm2 = torch.nn.BatchNorm2d(kernels * 2)
         self.batch_norm3 = torch.nn.BatchNorm2d(kernels * 4)
         self.batch_norm4 = torch.nn.BatchNorm2d(kernels * 8)
 
-        self.conv1 = torch.nn.Conv2d(input_size, kernels)
-        self.conv2 = torch.nn.Conv2d(kernels, kernels*2)
-        self.conv3 = torch.nn.Conv2d(kernels*2, kernels*4)
-        self.conv4 = torch.nn.Conv2d(kernels*4, kernels*8)
+        self.conv1 = torch.nn.Conv2d(input_channels, kernels, kernel_size=5, padding='same', padding_mode='replicate')
+        self.conv2 = torch.nn.Conv2d(kernels, kernels*2, kernel_size=5, padding='same', padding_mode='replicate')
+        self.conv3 = torch.nn.Conv2d(kernels*2, kernels*4, kernel_size=5, padding='same', padding_mode='replicate')
+        self.conv4 = torch.nn.Conv2d(kernels*4, kernels*8, kernel_size=5, padding='same', padding_mode='replicate')
 
     def forward(self, x):
-
         B, C, _, _ = x.shape
 
         W = func.leaky_relu(self.batch_norm1(self.conv1(x)))
@@ -41,22 +49,15 @@ class CUTSModel(torch.nn.Module):
         assert anchors_hw.shape[0] == B
         for batch_index in range(B):
             for sample_index in range(S):
-                patch_real[batch_index, sample_index, ...] = x[
-                    batch_index, :, anchors_hw[batch_index, sample_index, 0] -
-                    self.patch_size // 2:anchors_hw[batch_index, sample_index, 0] -
-                    self.patch_size // 2 + self.patch_size,
-                    anchors_hw[batch_index, sample_index, 1] -
-                    self.patch_size // 2:anchors_hw[batch_index, sample_index, 1] -
-                    self.patch_size // 2 + self.patch_size]
-                W_anchors[batch_index, sample_index,
-                              ...] = W[batch_index, :, anchors_hw[batch_index, sample_index, 0],
-                                       anchors_hw[batch_index, sample_index, 1]]
-                W_positives[batch_index, sample_index,
-                                ...] = W[batch_index, :,
-                                         positives_hw[batch_index, sample_index,
-                                                      0],
-                                         positives_hw[batch_index, sample_index,
-                                                      1]]
+                patch_real[batch_index, sample_index, ...] = x[batch_index, :, anchors_hw[batch_index, sample_index, 0]
+                                                               - self.patch_size // 2:anchors_hw[batch_index, sample_index, 0]
+                                                               - self.patch_size // 2 + self.patch_size, anchors_hw[batch_index, sample_index, 1]
+                                                               - self.patch_size // 2:anchors_hw[batch_index, sample_index, 1]
+                                                               - self.patch_size // 2 + self.patch_size]
+                tmp_1 = anchors_hw[batch_index, sample_index, 0]
+                tmp_2 = anchors_hw[batch_index, sample_index, 1]
+                W_anchors[batch_index, sample_index, ...] = W[batch_index, :, tmp_1, tmp_2]
+                W_positives[batch_index, sample_index, ...] = W[batch_index, :, positives_hw[batch_index, sample_index, 0], positives_hw[batch_index, sample_index, 1]]
 
         patch_recon = self.recon(W_anchors)
 
@@ -72,19 +73,19 @@ class CUTSModel(torch.nn.Module):
         return
 
 class Patch(torch.nn.Module):
-    def __init__(self, input_size, latent_dim, patch_size):
+    def __init__(self, input_channels, patch_size, latent_dim):
         super(Patch, self).__init__()
-        self.input_size = input_size
+        self.input_channels = input_channels
         self.patch_size = patch_size
         self.recon = torch.nn.Sequential(
-            torch.nn.Linear(latent_dim, self.input_size * self.patch_size**2),
+            torch.nn.Linear(latent_dim, self.input_channels * self.patch_size**2),
             torch.nn.LeakyReLU(),
-            torch.nn.Linear(self.in_channels * self.patch_size**2, self.input_size * self.patch_size**2)
+            torch.nn.Linear(self.input_channels * self.patch_size**2, self.input_channels * self.patch_size**2)
         )
 
     def forward(self, x):
         B, S, _ = x.shape
-        C = self.in_channels
+        C = self.input_channels
         P = self.patch_size
 
         reconed_patch = None
@@ -98,6 +99,125 @@ class Patch(torch.nn.Module):
                     (reconed_patch, curr_recon.unsqueeze(0)), dim=0)
 
         return reconed_patch
+    
+
+class PatchSampler(object):
+    def __init__(self, random_seed=None, patch_size=None, sampled_patches_per_image=None):
+        self.random_seed = random_seed
+        self.patch_size = patch_size
+        self.sampled_patches_per_image = sampled_patches_per_image
+        self.max_attempts = 20
+        self.ssim_thr = 0.5
+
+    def sample(self, image):
+        B, _, H, W = image.shape
+
+        anchors_hw = np.zeros((B, self.sampled_patches_per_image, 2),
+                              dtype=int)
+        positives_hw = np.zeros_like(anchors_hw)
+
+        h_range = (self.patch_size // 2, H - self.patch_size // 2)
+        w_range = (self.patch_size // 2, W - self.patch_size // 2)
+
+        random.seed(self.random_seed)
+        for batch_idx in range(B):
+            for sample_idx in range(self.sampled_patches_per_image):
+                anchors_hw[batch_idx, sample_idx, :] = [
+                    random.randrange(start=h_range[0], stop=h_range[1]),
+                    random.randrange(start=w_range[0], stop=w_range[1]),
+                ]
+                best_pos_hw_candidate = None
+                for _ in range(self.max_attempts):
+                    pos_hw_candidate = sample_hw_nearby(
+                        anchors_hw[batch_idx, sample_idx, :],
+                        H=H,
+                        W=W,
+                        neighborhood=self.patch_size,
+                        patch_size=self.patch_size)
+
+                    curr_ssim = compute_ssim(image[batch_idx, ...].cpu().detach().numpy(),
+                                             h1w1=anchors_hw[batch_idx,
+                                                             sample_idx, :],
+                                             h2w2=pos_hw_candidate,
+                                             patch_size=self.patch_size)
+
+                    if curr_ssim > self.ssim_thr:
+                        best_pos_hw_candidate = pos_hw_candidate
+                        break
+
+                if best_pos_hw_candidate is None:
+                    neighbor_hw = anchors_hw[batch_idx, sample_idx, :]
+                    neighbor_hw[0] = neighbor_hw[0] - 1 if neighbor_hw[
+                        0] > H // 2 else neighbor_hw[0] + 1
+                    neighbor_hw[1] = neighbor_hw[1] - 1 if neighbor_hw[
+                        1] > W // 2 else neighbor_hw[1] + 1
+                    best_pos_hw_candidate = neighbor_hw
+
+                positives_hw[batch_idx, sample_idx, :] = best_pos_hw_candidate
+
+        assert anchors_hw.shape == positives_hw.shape
+        return anchors_hw, positives_hw
+
+
+def sample_hw_nearby(hw, H, W, neighborhood=5, patch_size=7):
+    h_start = max(hw[0] - neighborhood, patch_size // 2)
+    h_stop = min(hw[0] + neighborhood, H - patch_size // 2)
+    w_start = max(hw[1] - neighborhood, patch_size // 2)
+    w_stop = min(hw[1] + neighborhood, W - patch_size // 2)
+
+    return (random.randrange(start=h_start, stop=h_stop),
+            random.randrange(start=w_start, stop=w_stop))
+
+def ssim(a, b, **kwargs):
+    assert a.shape == b.shape
+
+    H, W = a.shape[:2]
+
+    if min(H, W) < 7:
+        win_size = min(H, W)
+        if win_size % 2 == 0:
+            win_size -= 1
+    else:
+        win_size = None
+
+    if len(a.shape) == 3:
+        channel_axis = -1
+    else:
+        channel_axis = None
+
+    return structural_similarity(a,
+                                 b,
+                                 channel_axis=channel_axis,
+                                 win_size=win_size,
+                                 **kwargs)
+
+
+def range_aware_ssim(label_true, label_pred):
+
+    if isinstance(label_true.max(), bool):
+        label_true = label_true.astype(np.float32)
+        label_pred = label_pred.astype(np.float32)
+    data_range = label_true.max() - label_true.min()
+
+    if data_range == 0:
+        data_range = 1.0
+
+    return ssim(a=label_true, b=label_pred, data_range=data_range)
+
+def compute_ssim(image, h1w1, h2w2, patch_size):
+    patch1 = image[:, h1w1[0] - patch_size // 2:h1w1[0] - patch_size // 2 +
+                   patch_size, h1w1[1] - patch_size // 2:h1w1[1] -
+                   patch_size // 2 + patch_size]
+    patch2 = image[:, h2w2[0] - patch_size // 2:h2w2[0] - patch_size // 2 +
+                   patch_size, h2w2[1] - patch_size // 2:h2w2[1] -
+                   patch_size // 2 + patch_size]
+
+    patch1 = np.moveaxis(patch1, 0, -1)
+    patch2 = np.moveaxis(patch2, 0, -1)
+    return range_aware_ssim(patch1, patch2)
+
+##############################################################################################################################
+### Model Training & Eval
     
 class NTXentLoss(torch.nn.Module):
 
