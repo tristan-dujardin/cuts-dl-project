@@ -346,13 +346,13 @@ def test(model, test_loader, lambda_contr_loss=0.001):
             test_loss_contrastive += loss_contrastive.item() * B
             test_loss += loss.item() * B
 
-            B, L, H, W = W.shape
-            W_for_recon = W.permute((0, 2, 3, 1)).reshape(B, H * W, L)
+            B, L, H, Wi = W.shape
+            W_for_recon = W.permute((0, 2, 3, 1)).reshape(B, H * Wi, L)
             patch_recon = model.recon(W_for_recon)
             C = patch_recon.shape[2]
             P = patch_recon.shape[-1]
             patch_recon = patch_recon[:, :, :, P // 2, P // 2]
-            patch_recon = patch_recon.permute((0, 2, 1)).reshape(B, C, H, W)
+            patch_recon = patch_recon.permute((0, 2, 1)).reshape(B, C, H, Wi)
 
             output_saver.save(image_batch=data_x,
                               recon_batch=patch_recon,
