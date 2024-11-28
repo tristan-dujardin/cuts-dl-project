@@ -11,17 +11,17 @@ if __name__ == '__main__':
 
     params = parser.parse_args()
 
-    data = Retina('data/retina')
+    data = Retina()
     
-    train_loader, val_loader, test_loader = split_data(data, (0.7, 0.15, 0.15), 8)
+    train_loader, val_loader, test_loader = split_data(data, (0.7, 0.15, 0.15), 8, max_size=200)
 
     model = CUTSModel()
 
     model = train(model, train_loader, val_loader, params, verbose=True)
 
-    acc = test(model, test_loader)
+    loss = test(model, test_loader)
 
-    print(f'Run Test Accuracy: {acc:.2%}\n')
+    print(f'Run Test Loss: {loss}\n')
 
     save = input('Will you Save the model? [y/N]\n').lower()
 
