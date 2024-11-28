@@ -6,7 +6,6 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import torch
-import numpy as np
 
 from skimage.metrics import structural_similarity
 from .output_saver import OutputSaver
@@ -264,6 +263,42 @@ class NTXentLoss(torch.nn.Module):
             loss += -torch.log(score_pos / (score_pos + score_neg))
 
         return loss.mean() / B
+def assign_unique_colors(tensor):
+
+    if isinstance(tensor, np.ndarray):
+        tensor = torch.from_numpy(tensor)
+
+
+    if tensor.ndimension() == 3:
+        tensor = tensor.permute(2, 0, 1).unsqueeze(0)  
+
+    B, C, H, W = tensor.shape
+
+
+    if C != 3:
+        tensor = tensor.expand(-1, 3, -1, -1) 
+
+
+    colors = plt.cm.get_cmap('tab20', H * W)
+    #color_map = plt.cm.get_cmap('hsv', H * W)
+    reshaped_tensor = tensor.view(B, C, -1)  
+
+    colored_recon_img = torch.zeros((B, 3, H, W), dtype=torch.float32)
+    for batch_idx in range(B):
+        unique_patches = reshaped_tensor[batch_idx].unique(dim=1)
+        for patch_idx, unique_color in enumerate(unique_patches.T):
+
+            mask = (tensor[batch_idx] == unique_color[:, None, None]).all(dim=0)
+
+            expanded_mask = mask.unsqueeze(0).expand(3, -1, -1)
+
+            color = torch.tensor(colors(patch_idx)[:3], dtype=torch.float32)  
+            color = color.view(3, 1, 1)
+
+            colored_recon_img[batch_idx] = torch.where(expanded_mask, color, colored_recon_img[batch_idx])
+
+    return colored_recon_img
+
 
 def save_segmentation_comparison(original, reconstructed, output_dir="results", num_samples=5):
     os.makedirs(output_dir, exist_ok=True)
@@ -277,11 +312,19 @@ def save_segmentation_comparison(original, reconstructed, output_dir="results", 
         original_img = np.clip(original_img, 0, 1)
         recon_img = np.clip(recon_img, 0, 1)
 
-        comparison = np.concatenate((original_img, recon_img), axis=1)
+
+        colored_recon_img = assign_unique_colors(torch.tensor(recon_img))
+
+
+        colored_recon_img = colored_recon_img[0].cpu().numpy().transpose(1, 2, 0)
+
+        comparison = np.concatenate((original_img, colored_recon_img), axis=1)
         output_path = os.path.join(output_dir, f"comparison_{i}.png")
 
         plt.imsave(output_path, comparison)
         print(f"Saved comparison image at: {output_path}")
+
+
 
 def train(model, train_loader, val_loader, params, lambda_contr_loss=0.001, verbose=False):
     def __acc(pred_y, y): return ((pred_y == y).sum() / len(y)).item()
