@@ -4,6 +4,10 @@ import torch
 import torch.nn.functional as func
 import numpy as np
 
+import matplotlib.pyplot as plt
+import torch
+import numpy as np
+
 from skimage.metrics import structural_similarity
 from .output_saver import OutputSaver
 from tqdm import tqdm
@@ -261,6 +265,23 @@ class NTXentLoss(torch.nn.Module):
 
         return loss.mean() / B
 
+def save_segmentation_comparison(original, reconstructed, output_dir="results", num_samples=5):
+    os.makedirs(output_dir, exist_ok=True)
+
+    num_samples = min(num_samples, original.shape[0])
+
+    for i in range(num_samples):
+        original_img = original[i].cpu().numpy().transpose(1, 2, 0)
+        recon_img = reconstructed[i].cpu().detach().numpy().transpose(1, 2, 0)
+        
+        original_img = np.clip(original_img, 0, 1)
+        recon_img = np.clip(recon_img, 0, 1)
+
+        comparison = np.concatenate((original_img, recon_img), axis=1)
+        output_path = os.path.join(output_dir, f"comparison_{i}.png")
+
+        plt.imsave(output_path, comparison)
+        print(f"Saved comparison image at: {output_path}")
 
 def train(model, train_loader, val_loader, params, lambda_contr_loss=0.001, verbose=False):
     def __acc(pred_y, y): return ((pred_y == y).sum() / len(y)).item()
@@ -323,17 +344,22 @@ def train(model, train_loader, val_loader, params, lambda_contr_loss=0.001, verb
     return model
 
 @torch.no_grad()
-def test(model, test_loader, lambda_contr_loss=0.001):
+def test(model, test_loader, lambda_contr_loss=0.001, output_dir="segmentation_results", num_samples=5):
     output_saver = OutputSaver('images/')
-
+    
     criterion = torch.nn.MSELoss()
     criterion_contrastive = NTXentLoss()
     test_loss_recon, test_loss_contrastive, test_loss = 0, 0, 0
 
     model.eval()
+    saved_samples = 0
+
     with torch.no_grad():
         for _, (data_x, data_y) in enumerate(test_loader):
             B = data_x.shape[0]
+
+            if saved_samples >= num_samples:
+                break
 
             data_x = data_x.type(torch.FloatTensor)
             W, patch_real, patch_recon, z_anchors, z_positives = model(data_x)
@@ -358,9 +384,13 @@ def test(model, test_loader, lambda_contr_loss=0.001):
                               recon_batch=patch_recon,
                               label_true_batch=data_y,
                               latent_batch=W)
-    test_loss_recon = test_loss_recon / len(test_loader.dataset)
-    test_loss_contrastive = test_loss_contrastive / len(test_loader.dataset)
-    test_loss = test_loss / len(test_loader.dataset)
-    print(f'Test Loss: {test_loss:.2f} | Test Loss Contrastive: {test_loss_contrastive*100:>5.2f}% | Test Loss Contrastive: {test_loss_recon:.2f}')
 
+            save_segmentation_comparison(data_x, patch_recon, output_dir=output_dir, num_samples=num_samples - saved_samples)
+            saved_samples += B
+
+    test_loss_recon /= len(test_loader.dataset)
+    test_loss_contrastive /= len(test_loader.dataset)
+    test_loss /= len(test_loader.dataset)
+
+    print(f'Test Loss: {test_loss:.2f} | Test Loss Contrastive: {test_loss_contrastive*100:>5.2f}% | Test Loss Reconstruction: {test_loss_recon:.2f}')
     return test_loss
