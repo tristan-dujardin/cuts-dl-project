@@ -2,6 +2,7 @@ import os
 import torch
 import torch.nn.functional as func
 
+from .output_saver import OutputSaver
 from tqdm import tqdm
 
 class CUTSModel(torch.nn.Module):
@@ -203,6 +204,8 @@ def train(model, train_loader, val_loader, params, lambda_contr_loss=0.001, verb
 
 @torch.no_grad()
 def test(model, test_loader, lambda_contr_loss=0.001):
+    output_saver = OutputSaver('images/')
+
     criterion = torch.nn.MSELoss()
     criterion_contrastive = NTXentLoss()
     test_loss_recon, test_loss_contrastive, test_loss = 0, 0, 0
@@ -233,7 +236,7 @@ def test(model, test_loader, lambda_contr_loss=0.001):
 
             output_saver.save(image_batch=data_x,
                               recon_batch=patch_recon,
-                              label_true_batch=data_y if config.no_label is False else None,
+                              label_true_batch=data_y,
                               latent_batch=W)
     test_loss_recon = test_loss_recon / len(test_loader.dataset)
     test_loss_contrastive = test_loss_contrastive / len(test_loader.dataset)
