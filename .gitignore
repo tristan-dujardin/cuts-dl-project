@@ -1,2 +1,10 @@
 venv
 .vscode
+
+data/*
+!data/README.md
+
+*__pycache__
+
+images
+models
