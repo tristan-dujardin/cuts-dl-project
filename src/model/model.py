@@ -316,7 +316,7 @@ def train(model, train_loader, val_loader, params, lambda_contr_loss=0.001, verb
                 val_loss_recon /= len(val_loader.dataset)
                 val_loss_contrastive /= len(val_loader.dataset)
                 val_loss /= len(val_loader.dataset)
-            print(f'Epoch {epoch:>3} | Val Loss: {val_loss:.2f} | Val Loss Recon: {val_loss_recon*100:>5.2f}% | Val Loss Contrastive: {val_loss_contrastive:.2f}')
+            print(f'Epoch {epoch:>3} | Val Loss: {val_loss:.2f} | Val Loss Recon: {val_loss_recon:2f} | Val Loss Contrastive: {val_loss_contrastive:.2f}')
         
     return model
 
@@ -359,6 +359,6 @@ def test(model, test_loader, lambda_contr_loss=0.001):
     test_loss_recon = test_loss_recon / len(test_loader.dataset)
     test_loss_contrastive = test_loss_contrastive / len(test_loader.dataset)
     test_loss = test_loss / len(test_loader.dataset)
-    print(f'Test Loss: {test_loss:.2f} | Test Loss Recon: {test_loss_recon:.2f}% | Test Loss Contrastive: {test_loss_contrastive:.2f}')
+    print(f'Test Loss: {test_loss:.2f} | Test Loss Recon: {test_loss_recon:.2f} | Test Loss Contrastive: {test_loss_contrastive:.2f}')
 
     return test_loss
