@@ -176,18 +176,14 @@ def images_transform(folder_path):
 
         # 2. Segmentation plot.
         fig2 = plt.figure(figsize=(20, 6))
-        ax = fig2.add_subplot(1, 4, 1)
+        ax = fig2.add_subplot(1, 3, 1)
         ax.imshow(image)
         ax.set_axis_off()
-        ax = fig2.add_subplot(1, 4, 2)
-        gt_cmap = 'gray' if len(np.unique(label_true)) <= 2 else 'tab20'
-        ax.imshow(continuous_renumber(label_true), cmap=gt_cmap)
-        ax.set_axis_off()
-        ax = fig2.add_subplot(1, 4, 3)
+        ax = fig2.add_subplot(1, 3, 2)
         ax.imshow(seg_pred, cmap='gray')
         ax.set_title('Spectral K-means')
         ax.set_axis_off()
-        ax = fig2.add_subplot(1, 4, 4)
+        ax = fig2.add_subplot(1, 3, 3)
         ax.imshow(continuous_renumber(label_pred), cmap='tab20')
         ax.set_title('Spectral K-means')
         ax.set_axis_off()
